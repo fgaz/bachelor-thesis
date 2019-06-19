@@ -2,9 +2,9 @@ image: nixos/unstable
 repositories:
   nixpkgs: https://nixos.org/channels/nixpkgs-unstable
 sources:
-- https://git.sr.ht/~fgaz/thesis
+- https://git.sr.ht/~fgaz/bachelor-thesis
 tasks:
 - build: |
-    cd thesis/thesis
+    cd bachelor-thesis
     nix-build
 

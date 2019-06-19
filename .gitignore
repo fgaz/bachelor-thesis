@@ -1,2 +1,8 @@
 result
+*.aux
+*.log
+*.pdf
+*.toc
+*.bbl
+*.blg
 
