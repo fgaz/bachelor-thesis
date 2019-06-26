@@ -14,6 +14,7 @@ let
       pgfplots
       pgf
       xcolor
+      listings
     ;
   };
   filename = "Gazzetta_Francesco_Informatica_19";
