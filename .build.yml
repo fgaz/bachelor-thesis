@@ -4,7 +4,7 @@ repositories:
 sources:
 - https://git.sr.ht/~fgaz/bachelor-thesis
 secrets:
-- cdcf0901-9843-4671-9d5f-aaf61b86da53
+- 49b46368-137e-441f-bf8c-cf9a7a7e9a7d
 tasks:
 - build: |
     cd bachelor-thesis
@@ -13,5 +13,5 @@ tasks:
     cd bachelor-thesis
     t=$(date -uIseconds)
     c=$(git rev-parse HEAD)
-    curl -T result/Gazzetta_Francesco_Informatica_19.pdf -ufgaz https://api.bintray.com/content/fgaz/bachelor-thesis/thesis-unstable/unstable-$t-$c/Gazzetta_Francesco_Informatica_19_unstable-$t-$c.pdf?publish=1 < ~/.bintray-api-key
+    curl --netrc-file ~/.bintray-api-key.netrc -T result/Gazzetta_Francesco_Informatica_19.pdf https://api.bintray.com/content/fgaz/bachelor-thesis/thesis-unstable/unstable-$t-$c/Gazzetta_Francesco_Informatica_19_unstable-$t-$c.pdf?publish=1
 
