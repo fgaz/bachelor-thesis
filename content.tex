@@ -188,6 +188,34 @@ Programmatically checking a type for inhabitants is a difficult task in itself, 
 Only types from this whitelist are allowed as arguments of an optimizable function.
 Most importantly, the \texttt{SN} type is part of the allowed ones.
 
+\subsection{Usage}
+\label{subsec:usage}
+
+The plugin is published as a Cabal library in a repository located at \url{https://git.sr.ht/~fgaz/singleton-optimizer} and mirrored at \url{https://github.com/fgaz/singleton-optimizer}
+To use it, either install it with the command \texttt{cabal install singleton-optimizer} and use it by manually specifying the \texttt{-fplugin GHC.Plugin.SingletonOptimizer} GHC option, or add it as a dependency and GHC option in the .cabal file of the package you need to optimize.
+Listing~\ref{lst:cabal} provides an example.
+
+\begin{lstlisting}[label=lst:cabal, caption=Example .cabal stanza]
+library somelib
+  ghc-options:         -fplugin GHC.Plugin.SingletonOptimizer
+  build-depends:       base, singleton-optimizer
+  exposed-modules:     YourModule
+  hs-source-dirs:      src
+  default-language:    Haskell2010
+\end{lstlisting}
+
+Once the package is installed or specified as a dependency, add the \texttt{OptimizeSingleton} annotation to the singleton declarations that need to be optimized.
+
+\begin{lstlisting}[caption=Optimizing \texttt{proofS}]
+{-# ANN proofS OptimizeSingleton #-}
+proofS :: SN n -> SN m -> n :+: 'S m :~: 'S (n :+: m)
+proofS SZ     _ = Refl
+proofS (SS n) m = case proofS n m of Refl -> Refl
+\end{lstlisting}
+
+In case the totality checker cannot prove that one of the bindings terminates, but the termination is manually proven, one can use the \texttt{UnsafeTotal} annotation to force the plugin to treat that binding as total.
+Obviously this annotation is not to be used lightly, as it can break the soundness of the optimizationi if used on a non-total binding.
+
 \chapter{Results}
 \label{cha:results}
 
