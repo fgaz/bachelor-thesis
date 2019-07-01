@@ -4,16 +4,194 @@
 \section{Context}
 \label{sec:context}
 
+TODO simple example with equality or expr
+
+
+One typical use of GADT is encoding the length of a list in its type, forming what is commonly called an \emph{indexed vector}, so that the added information allows the programmer to implement otherwise unsafe functions in a safe way:
+
+\begin{lstlisting}[caption=A length-indexed vector]
+data N = Z | S N
+
+data Vec :: * -> N -> *
+  where
+    Nil  :: Vec a 'Z
+    Cons :: a -> Vec a n -> Vec a ('S n)
+
+head :: Vec a ('S n) -> a
+head (Cons x _) = x
+\end{lstlisting}
+
+In the above example we can be sure that the \texttt{head} function will only be called on non-empty lists, since \texttt{Nil} cannot have type \texttt{Vec a ('S n)}.
+
 \section{Problem}
 \label{sec:problem}
+
+\subsection{Motivating example}
+\label{subsec:motivating-example}
+
+The problem arises when we try to implement more complex functions.
+
+For example, here's an implementation of the classic $O(n)$ reverse on the length-indexed vectors:
+
+\begin{lstlisting}
+-- @*Type-level addition*@
+type family (n :: N) :+: (m :: N) :: N where
+    'Z   :+: m = m
+    'S n :+: m = 'S (n :+: m)
+
+reverse' :: Vec a n -> Vec a m -> Vec a (n :+: m)
+reverse' Nil         acc = acc
+reverse' (Cons x xs) acc = reverse' xs (Cons x acc)
+
+reverse :: Vec a n -> Vec a n
+reverse v = reverse' v Nil
+\end{lstlisting}
+
+The above code will not compile, and will generate an error similar to:
+
+% MAYBE switch to minted (which supports utf-8)
+\begin{verbatim}
+• Couldn't match type ‘n’ with ‘n :+: 'Z’
+    [...]
+  Expected type: Vec a n
+    Actual type: Vec a (n :+: 'Z)
+\end{verbatim}
+
+in \texttt{reverse} and
+
+\begin{verbatim}
+• Could not deduce: (n1 :+: 'S m) ~ 'S (n1 :+: m)
+  from the context: n ~ 'S n1
+    [...]
+  Expected type: Vec a (n :+: m)
+    Actual type: Vec a (n1 :+: 'S m)
+\end{verbatim}
+
+in \texttt{reverse'}.
+
+The complexity added by GADTs is enough that GHC cannot prove on its own that \texttt{reverse} and \texttt{reverse'} have the types specified in their signatures.
+In the example above, GHC is not able to autonomously produce a proof that $n \sim n+0$ and that $n+(m+1) \sim (n+m)+1$ by starting from the definitional equality.
+
+Those proofs need to be supplied by the programmer, in the form of a propositional equality (\texttt{(:~:)}) declaration.
+To do this for our example, a few auxiliary definitions are needed:
+
+\begin{lstlisting}[caption=Bringing \texttt{N} to the value level]
+-- @*A singleton over natural numbers, needed to work with \texttt{N} at the value level*@
+data SN :: N -> * where
+    SZ :: SN 'Z
+    SS :: SN n -> SN ('S n)
+
+length :: Vec a n -> SN n
+length Nil         = SZ
+length (Cons _ xs) = SS (length xs)
+\end{lstlisting}
+
+In listings \ref{lst:proof-z} and \ref{lst:proof-s} we implement the two proofs:
+
+\begin{lstlisting}[caption=A proof of the right identity element in type-level addition, label=lst:proof-z]
+proofIdentityZ :: SN n -> n :+: 'Z :~: n
+proofIdentityZ SZ = Refl
+proofIdentityZ (SS n) = case proofIdentityZ n of Refl -> Refl
+\end{lstlisting}
+
+\begin{lstlisting}[caption=A proof that $n+(m+1) \sim (n+m)+1$, label=lst:proof-s]
+proofS :: SN n -> SN m -> n :+: 'S m :~: 'S (n :+: m)
+proofS SZ     _ = Refl
+proofS (SS n) m = case proofS n m of Refl -> Refl
+\end{lstlisting}
+
+This brings us to the final version of \texttt{reverse}:
+
+\begin{lstlisting}[caption=Length-indexed vector reversal]
+reverse' :: Vec a n -> Vec a m -> Vec a (n :+: m)
+reverse' Nil         acc = acc
+reverse' (Cons x xs) acc =
+    case proofS (length xs) (length acc) of
+      Refl -> reverse' xs (Cons x acc)
+
+reverse :: Vec a n -> Vec a n
+reverse v =
+    case proofIdentityZ (length v) of
+      Refl -> reverse' v Nil
+\end{lstlisting}
+
+\subsection{Complexity issues of the example}
+\label{subsec:complexity-issues}
+
+Normally the complexity of a list reversal is $O(n)$.
+In this case though we have to take into account the calls to \texttt{proofS}, \texttt{proofIdentityZ}, and \texttt{length}.
+While \texttt{proofIdentityZ} is just a single $O(n)$ operation, we can see that \texttt{proofS} and \texttt{length}, each one $O(n)$, get called at every \texttt{reverse'} iteration ($O(n)$), for a final complexity of $O(n^2)$.
+
+In this example, the complexity raises by a factor of $n$, but this overhead (the computation of \texttt{Refl}) isn't actually needed to produce the result, it just carries the type information needed to verify the correctness of the algorithm.
+Moreover, the \texttt{n :+: 'Z :~: n} type has exactly one non-$\bot$ inhabitant, \texttt{Refl}, and this is the case for every valid equality proposition. Such types are commonly called \emph{singletons}.
+The compiler though cannot optimize the proof away and substitute it with a coerced \texttt{Refl} because a Haskell program is not guaranteed to terminate, and a nontermination can be used to construct unsound proofs, so executing the proof at runtime is necessary to maintain soundness.
+
+In general, every singleton type in Haskell suffers from this issue, which is conversely absent in total languages such as Coq.
 
 \chapter{Solution}
 \label{sec:solution}
 
-\cite{refinement-types-for-haskell}
+Since well-typed singletons only have one possible inhabintant for each type variable assignment (we exclude $\bot$ for now), it is possible to construct that term by inspecting the datatype's constructors and picking the only possible one.
+The resulting term, with appropriate type coercions, can be substituted to the (already type-checked) proof, and, being the reduced form of the proof, it will have $O(1)$ complexity.
+
+In the case of a function, we can build one with the same arity that ignores its arguments and returns a term constructed in the same way.
+Since we have to ensure that the return type is actually inhabited, and the function type corresponds to logic implication, this can be done only at the condition that all the argument types are inhabited.
+
+We solve the $\bot$ problem by using totality checking.
+Totality checking is a form of program analysis that can prove termination or nontermination.
+Due to the undecidability of the halting problem, there are some cases where determining this is not possible in a finite amount of time.
+This means the optimization will not trigger in all possible cases, but the cases where it will are enough to be useful for our purposes.
+
+We only need a partial totality check, localized on the binding to optimize.
+
+\section{Implementation}
+\label{sec:implementation}
+
+We implemented the optimization as a GHC core plugin.
+
+The plugin analyzes each top-level binding that is annotated with the \texttt{OptimizeSingleton} annotation and verifies that all the following conditions are met:
+
+\begin{itemize}
+  \item{The binding is a singleton, or can return a singleton}
+  \item{The binding is total}
+  \item{All the referenced bindings are total, recursively}
+\end{itemize}
+
+The singleton check is implemented by inspecting the type of the expression.
+First, all abstractions (both $\lambda$ and $\Lambda$) are removed, then data constructors are extracted from the resulting type.
+For the type to be detected as a singleton, there should be only a single constructor with no arguments.
+Even though it's overly restrictive\footnote{For example, singletons with multiple data constructor of which only one is valid for any given type variable instantiation are discarded.}, this check manages to catch many useful singletons.
+
+\begin{lstlisting}[caption=Some examples of singleton detection]
+-- @*This type is correctly identified as a singleton*@
+type commutativity n m = n :+: m :~: m :+: n
+
+-- @*This type also passes the check, as the function returns a singleton*@
+type commutativity' n m = SN n -> SN m -> n :+: m :~: m :+: n
+
+-- @*This type fails the check as expected*@
+type Foo = TODO
+
+-- @*A more complex type is not detected*@
+data Bar x where
+    TODO
+\end{lstlisting}
+
+Totality checking is implemented by leveraging the Liquid Haskell\cite{refinement-types-for-haskell} totality checker\footnote{Only in structural mode at the time of writing. Enabling the metric-based checker is planned.}.
+It was chosen mainly because, being an active project written in Haskell itself and made available as both an executable and a library that acts on GHC Core, it makes integrating it with the GHC plugin system fairly straightforward.
+
+Liquid Haskell only checks definitions and not uses\footnote{And it wouldn't be possible to check all use sites anyway, since dependant modules are not known beforehand.}, and Haskell does not distinguish between data and codata, so in principle all functions can fail to terminate even if they are structurally recursive.
+This limits us to optimizing only non-function types though, which is extremely limiting, but, as explained in the previous section, we can lift this restriction if all the arguments are inhabited (by a non-$\bot$ term).
+This may come at the cost of increased laziness (see section~\ref{subsec:limitations-laziness}).
+
+Programmatically checking a type for inhabitants is a difficult task in itself, so in our work we simply provide a list of manually checked types.
+Only types from this whitelist are allowed as arguments of an optimizable function.
+Most importantly, the \texttt{SN} type is part of the allowed ones.
 
 \chapter{Results}
 \label{cha:results}
+
+TODO results, Figure~\ref{fig:bench1}
 
 \begin{figure}
   \begin{minipage}{0.5\textwidth}
@@ -41,7 +219,7 @@
         {benchmark-unoptimized.csv};
     \end{axis}
     \end{tikzpicture}
-    \caption{A subfigure}\label{fig:bench1:a}
+    \caption{Measured times for a length-indexed vector reverse on vectors of varying sizes. TODO it is quadratic TODO include a fit}\label{fig:bench1:a}
   \end{minipage}
   \begin{minipage}{0.5\textwidth}
     \begin{tikzpicture}
@@ -68,12 +246,51 @@
         {benchmark-optimized.csv};
     \end{axis}
     \end{tikzpicture}
-    \caption{B subfigure}\label{fig:bench1:b}
+    \caption{The same program, but with the optimization enabled. TODO something about O(n)}\label{fig:bench1:b}
   \end{minipage}
-  \caption{Blah blah blah TODO}
+  \caption{Effect of the optimization on a length-indexed vector reversal. Note the difference in scale. TODO merge the subcaptions here, because otherwise it's pretty confusing.}
   \label{fig:bench1}
 \end{figure}
 
+\section{Known limitations}
+\label{sec:limitations}
+
+MAYBE limitations intro
+
+\subsection{The optimization is restricted to individual modules}
+\label{subsec:single-module}
+
+Due to limitations in the GHC plugin system the optimizer cannot perform intra-module termination analysis, so the optimization will trigger only if all the names referenced by the annotated binding are either whitelisted or defined in the same module.
+
+\subsection{Increased laziness}
+\label{subsec:limitations-laziness}
+
+TODO
+
+\subsection{Limitations derived from Liquid Haskell}
+\label{subsec:limitations-lh}
+
+In some cases, Liquid Haskell's totality checker can report a function as total when it actually isn't.
+
+Such known cases are, at the time of writing:
+
+\begin{description}
+  \item[Datatype-encoded recursion]
+    For example, the following code is detected as total and the \texttt{callsRecWithData} obviously incorrect equality is optimized:
+    \begin{lstlisting}
+newtype Rec a = MkRec (Rec a -> a)
+
+recWithData :: Rec a -> a
+recWithData r@(MkRec f) = f r
+
+{-# ANN callsRecWithData OptimizeSingleton #-}
+callsRecWithData :: (Int :~: Bool)
+callsRecWithData = recWithData (MkRec recWithData)
+    \end{lstlisting}
+\end{description}
+
 \chapter{Conclusions}
 \label{cha:conclusions}
+
+TODO
 
