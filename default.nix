@@ -15,6 +15,7 @@ let
       pgf
       xcolor
       listings
+      pdfx iftex xmpincl # pdf/a-1b
     ;
   };
   filename = "Gazzetta_Francesco_Informatica_19";
