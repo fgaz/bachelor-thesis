@@ -22,6 +22,8 @@ Finally, in chapter~\ref{cha:results}, we demonstrate how the optimizer can lowe
 We show that the complexity of the motivating example is brought down from $O(n^2)$ down to $O(n)$.
 Limitations are also discussed.
 
+The optimizer is made available as a Cabal library in a repository located at \url{https://git.sr.ht/~fgaz/singleton-optimizer} and mirrored at \url{https://github.com/fgaz/singleton-optimizer}.
+
 \section{Context}
 \label{sec:context}
 
@@ -213,7 +215,7 @@ $$
 
 This brings us to the final version of \texttt{reverse}, which provides the compiler with the proofs as evidence that the types shown in the previous error are, indeed, equivalent:
 
-\begin{lstlisting}[caption=Length-indexed vector reversal]
+\begin{lstlisting}[label=lst:reversal-final,caption=Length-indexed vector reversal]
 reverse' :: Vec a n -> Vec a m -> Vec a (n :+: m)
 reverse' Nil         acc = acc
 reverse' (Cons x xs) acc =
@@ -272,7 +274,7 @@ We only need a partial totality check, localized on the binding to optimize.
 \section{Implementation}
 \label{sec:implementation}
 
-We implemented the optimization as a GHC Core plugin.
+We implemented the optimization as a GHC Core plugin that we named \texttt{singleton-optimizer}.
 
 The plugin analyzes each top-level binding that is annotated with the \texttt{OptimizeSingleton} annotation and verifies that all the following conditions are met:
 
@@ -353,7 +355,47 @@ Obviously this annotation is not to be used lightly, as it can break the soundne
 \chapter{Results}
 \label{cha:results}
 
-TODO results, Figure~\ref{fig:bench1}
+We now show that the optimization produces a real and measurable decrease in complexity, by means of tests and bennchmarks.
+We also describe the limitations to be aware of when employing the plugin.
+
+\section{Tests and Core output}
+\label{sec:tests}
+
+A number of tests with increasing complexity was written and categorized depending on the expected and actual triggering of the optimization.
+There are some cases where the plugin could optimize a singleton and it does not, but this does not undermine the soundness of the programs.
+More importantly, there is only one case where the plugin unsoundly optimizes where it shouldn't, described in section \ref{subsec:limitations-lh}, and it's due to a bug in Liquid Haskell.
+
+The core output of the plugin when ran on the tests was successfully sanity-checked with the \texttt{-dcore-lint} GHC option.
+Furthermore, its external representation\cite{core-external-representation} was manually verified for adherence to the expected output.
+
+For example, this is one of the simplest tests:
+
+\begin{lstlisting}
+TODO, I don't have the toolchain needed to print the core on this machine
+\end{lstlisting}
+
+Normally, this is the Core it would produce:
+
+\begin{lstlisting}
+TODO, I don't have the toolchain needed to print the core on this machine
+\end{lstlisting}
+
+When we enable the optimization, instead, the body of the function is replaced by a correctly coerced \texttt{Refl}:
+
+\begin{lstlisting}
+TODO, I don't have the toolchain needed to print the core on this machine
+\end{lstlisting}
+
+\section{Benchmarks}
+\label{sec:benchmarks}
+
+We now proceed to analyze the effects of the application of the optimization on our motivating example.
+
+We ran a benchmark in which \texttt{Vec}s of progressively larger sizes were reversed using the \texttt{reverse} function defined in listing~\ref{lst:reversal-final}.
+We then ran the same benchmark after adding the \texttt{OptimizeSingleton} annotation to the \texttt{proofIdentityZ} and \texttt{proofS} proofs, bringing their computational complexities down to a constant.
+Gone the overhead of the proofs, the complexity of the optimized \texttt{reverse} should be $O(n)$.
+
+This is confirmed by the results of the benchmark, shown in figure~\ref{fig:bench-reverse}.
 
 \begin{figure}
   \begin{minipage}{0.5\textwidth}
@@ -377,11 +419,13 @@ TODO results, Figure~\ref{fig:bench1}
         , y = Mean
         , y error = Stddev
         , col sep = comma
+        , only marks
         ]
         {benchmark-unoptimized.csv};
+      \addplot[mark=none, domain=10000:40000]{1.449e-8*x^2 - 1.884e-4*x + 1.411};
     \end{axis}
     \end{tikzpicture}
-    \caption{Measured times for a length-indexed vector reverse on vectors of varying sizes. TODO it is quadratic TODO include a fit}\label{fig:bench1:a}
+    \label{fig:bench-reverse:unoptimized}
   \end{minipage}
   \begin{minipage}{0.5\textwidth}
     \begin{tikzpicture}
@@ -404,15 +448,21 @@ TODO results, Figure~\ref{fig:bench1}
         , y = Mean
         , y error = Stddev
         , col sep = comma
+        , only marks
         ]
         {benchmark-optimized.csv};
+      \addplot[mark=none, domain=10000:40000]{2.209e-7*x - 0.002};
     \end{axis}
     \end{tikzpicture}
-    \caption{The same program, but with the optimization enabled. TODO something about O(n)}\label{fig:bench1:b}
+    \label{fig:bench-reverse:optimized}
   \end{minipage}
-  \caption{Effect of the optimization on a length-indexed vector reversal. Note the difference in scale. TODO merge the subcaptions here, because otherwise it is pretty confusing.}
-  \label{fig:bench1}
+  \caption{Measured times for a length-indexed vector reverse on vectors of varying sizes, with appropriate quadratic and linear fits. On the left, the unoptimized $O(n^2)$ version. On the right, the optimized $O(n)$ one. $R^2$ values are respectively $0.999$ and $0.992$. Note the difference in scale.}
+  \label{fig:bench-reverse}
 \end{figure}
+
+In the measured range the optimized version is three orders of magnitude faster that the unoptimized one, but most importantly it we can confirm the predicted complexities by fitting the data with the respective polynomials (quadratic and linear) and obtaining a low error.
+
+This benchmark can be repeated by running the \texttt{reverse} benchmark included in the plugin's package with the command \texttt{cabal bench}.
 
 \section{Known limitations}
 \label{sec:limitations}
@@ -459,5 +509,13 @@ callsRecWithData = recWithData (MkRec recWithData)
 \chapter{Conclusions}
 \label{cha:conclusions}
 
-TODO
+We showed how singleton proofs can be reduced to a constant when they are proved total and explained why this optimization isn't already done by GHC.
+We developed the \texttt{singleton-optimizer} package, which can detect those cases though the use of state-of-the-art tools, and can optimize them while maintaining soundness.
+Finally, we showed that the plugin has a practical and measurable effect.
+
+We believe that the advanced type system features combined with similarly advanced analysis techniques can not only greatly enhance the expressivity of a language, but often can do so at no additional computational cost or can even provide the means for further optimizations.
+
+Furthermore, as shown in this work, they can be applied to a restricted part of the program to great effect, without overly restricting the rest of it (in this optimization the totality check was local only).
+
+%MAYBE We believe more languages will shift towards this paradigm of
 
