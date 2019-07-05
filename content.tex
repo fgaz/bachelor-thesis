@@ -428,7 +428,7 @@ Due to limitations in the GHC plugin system the optimizer cannot perform intra-m
 \label{subsec:limitations-laziness}
 
 A side effect of replacing a function body with a constant is that the arguments do not get evaluated at all.
-As explained in Section~\ref{sec:solution}, this does not cause problems with the soundness of the proof, but it does cause an increase in the function's laziness.
+As explained in Section~\ref{cha:solution}, this does not cause problems with the soundness of the proof, but it does cause an increase in the function's laziness.
 For example, passing \texttt{undefined} as an argument will not make the optimized program crash when the unoptimized one would have.
 We do not consider this as a significant problem, since the programmer is only interested in the proof, which is guaranteed to hold anyway.
 
