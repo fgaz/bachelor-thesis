@@ -1,16 +1,12 @@
-\chapter*{Abstract} % senza numerazione
+\chapter*{Abstract}
 \label{abstract}
 
-\addcontentsline{toc}{chapter}{Abstract} % da aggiungere comunque all'indice
+\addcontentsline{toc}{chapter}{Abstract}
 
-%   Sommario è un breve riassunto del lavoro svolto dove si descrive l'obiettivo, l'oggetto della tesi, le
-% metodologie e le tecniche usate, i dati elaborati e la spiegazione delle conclusioni alle quali siete arrivati.
-%
-% Il sommario dell’elaborato consiste al massimo di 3 pagine e deve contenere le seguenti informazioni:
-% \begin{itemize}
-%   \item contesto e motivazioni
-%   \item breve riassunto del problema affrontato
-%   \item tecniche utilizzate e/o sviluppate
-%   \item risultati raggiunti, sottolineando il contributo personale del laureando/a
-% \end{itemize}
+When developing an Haskell program and using advanced type system features such as GADTs (Generalized Algebraic Data Types), it is often necessary to write proofs to make the program typecheck.
+When they are in the form of a singleton (a type with a single inhabitant), such proofs can end up increasing the computational complexity of the program.
+Since the proof can only return one possible value, one would expect that the compiler optimized it to a constant operation.
+This is not the case though, due to the pervasive presence of another inhabitant: $\bot$, which most often manifests in the form of nontermination.
+By employing a totality checker and a whitelist of inhabited types, we developed a GHC plugin that can perform the aforementioned optimization in a sound way.
+Finally, we will demonstrate how it can bring the complexity of some proof-heavy expressions from $O(n^2)$ down to $O(n)$.
 
