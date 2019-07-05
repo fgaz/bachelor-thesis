@@ -285,10 +285,10 @@ The plugin analyzes each top-level binding that is annotated with the \texttt{Op
 The singleton check is implemented by inspecting the type of the expression.
 
 First, all abstractions (both $\lambda$ and $\Lambda$) are removed, then data constructors are extracted from the resulting type.
-For example, in \texttt{forall n . SN n -> n :+: 'Z :\~: n}, we only consider \texttt{n :+: 'Z :\~: n}.
+For example, in \texttt{forall n . SN n -> n :+: 'Z :$\sim$: n}, we only consider \texttt{n :+: 'Z :$\sim$: n}.
 
 For the type to be detected as a singleton, the type constructor should have only a single data constructor with no arguments.
-In the previous example, the type constructor of the result is \texttt{:\~:}, and its only constructor is \texttt{Refl}
+In the previous example, the type constructor of the result is \texttt{:$\sim$:}, and its only constructor is \texttt{Refl}
 
 Even though it is overly restrictive\footnote{For example, singletons with multiple data constructor of which only one is valid for any given type variable instantiation are discarded.}, this check manages to catch many useful singletons.
 
