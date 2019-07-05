@@ -232,7 +232,7 @@ In this case though we have to take into account the calls to \texttt{proofS}, \
 While \texttt{proofIdentityZ} is just a single $O(n)$ operation, we can see that \texttt{proofS} and \texttt{length}, each one $O(n)$, get called at every \texttt{reverse'} iteration ($n$ in total), for a final complexity of $O(n^2)$.
 
 In this example, the complexity raises by a factor of $n$, but this overhead (the computation of \texttt{Refl}) is not actually needed to produce the result, it just carries the type information needed to verify the correctness of the algorithm.
-Moreover, the \texttt{n :+: 'Z $:\~:$ n} type has exactly one non-$\bot$ inhabitant, \texttt{Refl}, and this is the case for every valid equality proposition. Such types are commonly called \emph{singletons}, as mentioned in the itroduction.
+Moreover, the \texttt{n :+: 'Z $:\sim:$ n} type has exactly one non-$\bot$ inhabitant, \texttt{Refl}, and this is the case for every valid equality proposition. Such types are commonly called \emph{singletons}, as mentioned in the itroduction.
 
 The compiler though cannot optimize the proof away and substitute it with a type-coerced \texttt{Refl} because, while the representation of an eventual result would be identical, a Haskell program is not guaranteed to terminate. Nontermination can be used to construct unsound proofs, so executing the proof at runtime is necessary to maintain soundness.
 This is because, even if an unsoud proof is constucted through nontermination, the actual result of the proof will never be produced.
