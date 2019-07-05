@@ -452,6 +452,8 @@ recWithData r@(MkRec f) = f r
 callsRecWithData :: (Int :~: Bool)
 callsRecWithData = recWithData (MkRec recWithData)
     \end{lstlisting}
+
+   This error is a known bug in Liquid Haskell\footnote{\url{https://github.com/ucsd-progsys/liquidhaskell/issues/159}}.
 \end{description}
 
 \chapter{Conclusions}
