@@ -29,7 +29,7 @@ The optimizer is made available as a Cabal library in a repository located at \u
 
 To be able to properly describe the problem, we first need to recall how GADTs work and why they are used.
 
-GADTs (Generalized Algebraic Data Types) are a powerful generalization of Haskell's standard ADTs (Algebraic Data Types) that allow the programmer to explicitly specify the type signatures of data constructors. To briefly remind the reader of the usefulness of GADTs, an example follows:
+GADTs (Generalized Algebraic Data Types) are a powerful generalization of Haskell's standard ADTs (Algebraic Data Types) that allow the programmer to explicitly specify the type signatures of data constructors\cite{simple-unification-based-type-inference-for-gadts}. To briefly remind the reader of the usefulness of GADTs, an example follows:
 
 \begin{lstlisting}[caption=A GADT describing a simple language with ints and pairs]
 data Expr a
