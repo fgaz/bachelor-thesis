@@ -1,19 +1,19 @@
 \chapter{Intro}
 \label{cha:intro}
 
-When developing an Haskell program and using advanced type system features such as GADTs (Generalized Algebraic Data Types), often the program fails to typecheck without additional information about the structure of the types.
+When developing an Haskell program and using advanced type system features such as GADTs (Generalized Algebraic Data Types), sometimes the program fails to typecheck without additional information about the structure of the types.
 It is thus necessary for the programmer to write proofs to aid the compiler, for example in the form of propositional equality statements.
-Usually these proofs take the form of a singleton, a type with a single possible inhabitant that is used to simply carry type information.
+Usually these proofs have a singleton type, a type with a single inhabitant that is used to simply carry type information.
 We offer an overview of this context in section~\ref{sec:context}.
 
-Such proofs can end up increasing the computational complexity of the program: the body of the proof gets executed together with the caller, and can potentially have a high cost.
+Such proofs can end up increasing the computational complexity of the program: in Haskell the body of the proof must be executed together with the caller, and can potentially have a high cost.
 An extended example is shown in section~\ref{sec:problem}.
-Since the proof can only return one possible value, the unique inhabitant of the singleton, one would expect that, after having typechecked it to verify the soundness of the proof, the compiler optimized it to a constant operation.
-This is not the case though, due to the pervasive presence of another inhabitant: $\bot$ (bottom).
+Since the proof can only return one value, the unique inhabitant of the singleton, one would expect that, after having typechecked it to verify the soundness of the proof, the compiler optimized it to a constant operation.
+This is not the case though, due to the presence of another inhabitant: $\bot$ (bottom).
 In haskell, $\bot$ can inhabit any type, and can come from many sources, for example \texttt{undefined}, \texttt{error}, and most often nontermination.
 
 As explained in chapter~\ref{cha:solution}, we solve this problem by employing a totality checker coupled with a whitelist of inhabited types.
-We developed an optimizer that can optimize provably total singletons to a constant operation in a sound way.
+We developed an optimizer that can optimize provably total singleton proofs to a constant operation in a sound way.
 
 We provide the optimizer as a GHC plugin and briefly illustrate its design in section \ref{sec:implementation}.
 Its usage (section~\ref{subsec:usage}) is as simple as adding the plugin as a dependency and annotating the relevant bindings.
@@ -22,7 +22,7 @@ Finally, in chapter~\ref{cha:results}, we demonstrate how the optimizer can lowe
 We show that the complexity of the motivating example is brought down from $O(n^2)$ down to $O(n)$.
 Limitations are also discussed.
 
-The optimizer is made available as a Cabal library in a repository located at \url{https://git.sr.ht/~fgaz/singleton-optimizer} and mirrored at \url{https://github.com/fgaz/singleton-optimizer}.
+The optimizer is made available as a Cabal package in a repository located at \url{https://git.sr.ht/~fgaz/singleton-optimizer} and mirrored at \url{https://github.com/fgaz/singleton-optimizer}.
 
 \section{Context}
 \label{sec:context}
@@ -44,7 +44,7 @@ In the above listing, \texttt{Expr} has a type parameter that represents the typ
 This makes it possible to disallow meaningless \texttt{Expr}s.
 For example, \texttt{Succ (Int 2)} is well-typed, while \texttt{First (Int 2)} and \texttt{Succ (Pair (Int 3) (Int 1))} are not, because of the type mismatches between \texttt{First} and \texttt{Int} and between \texttt{Succ} and \texttt{Pair}.
 
-Since meaningless terms are not possible, an evaluator for this language is extremely straightforward, without the need for runtime error handling:
+Since meaningless terms are not represented, an evaluator for this language is extremely straightforward to write, without the need for runtime error handling:
 
 \begin{lstlisting}[caption=Evaluator for \texttt{Expr}]
 eval :: Expr a -> a
@@ -59,7 +59,7 @@ In this example, \texttt{eval} can return an \texttt{Int} when the constructor i
 One typical use of GADTs is encoding the length of a list in its type, forming what is commonly called an \emph{indexed vector}, so that the added information allows the programmer to implement otherwise unsafe functions in a safe way:
 
 \begin{lstlisting}[caption=A length-indexed vector]
--- @*Type of the peano naturals.*@
+-- @*Type of the Peano naturals.*@
 -- @*We lift it to the kind (\texttt{N}) and type (\texttt{'Z} and \texttt{'S}) level by using the \texttt{DataKinds} GHC extension*@
 data N = Z | S N
 
@@ -72,7 +72,7 @@ data Vec :: * -> N -> *
 
 head :: Vec a ('S n) -> a
 head (Cons x _) = x
--- @*We do not (and cannot) match for the other constructor*@
+-- @*We do not (and cannot) match against the other constructor*@
 \end{lstlisting}
 
 In the above example, vectors of different lengths will have different types, with the second type parameter representing the length.
@@ -144,7 +144,7 @@ Expected type: Vec a (n :+: m)
 
 in \texttt{reverse'}.
 
-The complexity added by GADTs is enough that GHC cannot prove on its own that \texttt{reverse} and \texttt{reverse'} have the types specified in their signatures (which are correct, as we will show).
+The complexity added by GADTs is enough that GHC cannot prove on its own that \texttt{reverse} and \texttt{reverse'} could safely be given the types specified in the signatures.
 In the \texttt{reverse} error, GHC is telling us that it is not able to autonomously produce a proof that $n \sim n+0$ (the right addition identity).
 In the \texttt{reverse'} error, the same happens for $n+(m+1) \sim (n+m)+1$ (a subset of the associative property).
 Tipically, GHC can only prove type equalities by starting from the definitional equality (the equalities derived directly from the type definition), and this is why it is able to prove, for example, $0+n \sim n$ but not $n+0 \sim n$. The former is present in \texttt{:+:}'s definition (\texttt{'Z :+: m = m}), the latter is not.
@@ -180,13 +180,13 @@ proofS SZ     _ = Refl
 proofS (SS n) m = case proofS n m of Refl -> Refl
 \end{lstlisting}
 
-The only inhabitant of \texttt{:$\sim$:}, \texttt{Refl}, represents a known reflexivity.
+The only inhabitant of \texttt{:$\sim$:}, \texttt{Refl}, represents reflexivity.
 
 Both of our proofs work by shrinking the problem until a base case of definitional equality is reached.
 The returned \texttt{Refl} is built not by composing other \texttt{Refl}s from the recursive calls, but by using their type information to deduce that the expression is well typed.
 To get this information, the result of the recursive call has to be evaluated by the \texttt{case} statement, so both proofs have $O(n)$ complexity.
 
-For example, in \texttt{proofIdentityZ}, the base case directly uses the definitional equality, while the second proves $(n+1) + 0 \sim n+1$ (we match on \texttt{SS n}, hence the $+1$) by recursively calling itself and obtaining $n+0 \sim n$.
+For example, in \texttt{proofIdentityZ}, the base case directly uses the definitional equality, while \texttt{proofS} proves $(n+1) + 0 \sim n+1$ (we match on \texttt{SS n}, hence the $+1$) by recursively calling itself and obtaining $n+0 \sim n$.
 The first proposition can be deduced from the second directly by definitional equality:
 
 $$
@@ -233,13 +233,13 @@ reverse v =
 
 Normally the complexity of a list reversal is $O(n)$.
 In this case though we have to take into account the calls to \texttt{proofS}, \texttt{proofIdentityZ}, and \texttt{length}.
-While \texttt{proofIdentityZ} is just a single $O(n)$ operation, we can see that \texttt{proofS} and \texttt{length}, each one $O(n)$, get called at every \texttt{reverse'} iteration ($n$ in total), for a final complexity of $O(n^2)$.
+While \texttt{proofIdentityZ} is just a single $O(n)$ operation, we can see that \texttt{proofS} and \texttt{length}, each one $O(n)$, get called at every \texttt{reverse'} iteration ($n$ in total), for a total complexity of $O(n^2)$.
 
 In this example, the complexity raises by a factor of $n$, but this overhead (the computation of \texttt{Refl}) is not actually needed to produce the result, it just carries the type information needed to verify the correctness of the algorithm.
 Moreover, the \texttt{n :+: 'Z $:\sim:$ n} type has exactly one non-$\bot$ inhabitant, \texttt{Refl}, and this is the case for every valid equality proposition. Such types are commonly called \emph{singletons}, as mentioned in the itroduction.
 
 The compiler though cannot optimize the proof away and substitute it with a type-coerced \texttt{Refl} because, while the representation of an eventual result would be identical, a Haskell program is not guaranteed to terminate. Nontermination can be used to construct unsound proofs, so executing the proof at runtime is necessary to maintain soundness.
-This is because, even if an unsoud proof is constucted through nontermination, the actual result of the proof will never be produced.
+This is because, even if an unsound proof is constucted through nontermination, the actual result of the proof will never be produced.
 
 For example, the following "proof" will compile, but if it terminated it would obviously be unsound:
 
@@ -252,13 +252,13 @@ The proposition defined by \texttt{unsound}'s type states that \texttt{Char} is 
 
 If such an expression was optimized to a constant operation, the above would not be valid anymore, and \texttt{unsound} would break the safety of the type system.
 
-In general, every singleton type in Haskell suffers from this issue, which is conversely absent in total languages such as Coq.
+In general, every singleton proof in Haskell suffers from this issue, which is conversely absent in total languages such as Coq.
 Total languages only compile when the program is guaranteed to produce a result in a finite amount of time for every possible input.
 
 \chapter{Solution}
 \label{cha:solution}
 
-Since well-typed singletons only have one possible inhabintant for each type variable assignment (we exclude $\bot$ for now), it is possible to construct that term by inspecting the datatype's constructors and picking the only possible one.
+Since singleton indexed types only have one inhabitant for each type variable assignment (we exclude $\bot$ for now), it is possible to construct that term by inspecting the datatype's constructors and picking the only possible one.
 The resulting term, with appropriate type coercions, can be substituted to the (already type-checked) proof, and, being the reduced form of the proof, it will have $O(1)$ complexity.
 
 In the case of a function, we can build one with the same arity that ignores its arguments and returns a term constructed in the same way.
@@ -267,7 +267,7 @@ Since we have to ensure that the return type is actually inhabited, and by the C
 We solve the $\bot$ problem by whitelisting a few useful identifiers from external libraries and by using totality checking.
 Totality checking is a form of program analysis that tries to prove termination or nontermination.
 Due to the undecidability of the halting problem, there are some cases where determining this is not possible in a finite amount of time.
-This means the optimization will not trigger in all possible cases, but the cases where it will are enough to be useful for our purposes.
+This means that our optimization will not trigger in all possible cases, but the cases where it will are enough to be useful for our purposes.
 
 We only need a partial totality check, localized on the binding to optimize.
 
@@ -292,7 +292,7 @@ For example, in \texttt{forall n . SN n -> n :+: 'Z :$\sim$: n}, we only conside
 For the type to be detected as a singleton, the type constructor should have only a single data constructor with no arguments.
 In the previous example, the type constructor of the result is \texttt{:$\sim$:}, and its only constructor is \texttt{Refl}
 
-Even though it is overly restrictive\footnote{For example, singletons with multiple data constructor of which only one is valid for any given type variable instantiation are discarded.}, this check manages to catch many useful singletons.
+Even though it is overly restrictive\footnote{For example, singletons with multiple data constructor of which only one is valid for any given type variable instantiation are discarded.}, this check manages to catch many useful cases.
 
 \begin{lstlisting}[caption=Some examples of singleton detection]
 -- @*This type is correctly identified as a singleton*@
@@ -314,7 +314,7 @@ data SN :: N -> * where
 Totality checking is implemented by leveraging the Liquid Haskell\cite{refinement-types-for-haskell} totality checker\footnote{Only in structural mode at the time of writing. Enabling the metric-based checker is planned.}.
 It was chosen mainly because, being an active project written in Haskell itself and made available as both an executable and a library that acts on GHC Core, it makes integrating it with the GHC plugin system fairly straightforward.
 
-Liquid Haskell only checks definitions and not uses\footnote{And it would not be possible to check all use sites anyway, since dependant modules are not known beforehand.}, and Haskell does not distinguish between data (in which infinite structures are not possible) and codata (in which they are), so in principle all functions can fail to terminate even if they are structurally recursive. For example \texttt{length :: [a] -> Int} is structurally recursive, but can hang if it is passed an infinite list.
+Liquid Haskell only checks definitions and not uses\footnote{And it would not be possible to check all use sites anyway, since dependant modules are not known beforehand.}, and Haskell allows codata (in which infinite structures are possible) and does not distinguish it from data (in which they are not), so in principle all functions can fail to terminate even if they are structurally recursive. For example \texttt{length :: [a] -> Int} is structurally recursive, but can hang if it is passed an infinite list.
 This limits us to optimizing only non-function types though, which is extremely limiting, but, as explained in the previous section, we can lift this restriction if all the arguments are inhabited (by a non-$\bot$ term).
 This may come at the cost of increased laziness (see section~\ref{subsec:limitations-laziness}).
 
@@ -338,7 +338,7 @@ library somelib
   default-language:    Haskell2010
 \end{lstlisting}
 
-Once the package is installed or specified as a dependency, add the \texttt{OptimizeSingleton} annotation to the singleton declarations that need to be optimized.
+Once the package is installed or specified as a dependency, add the \texttt{OptimizeSingleton} annotation to the singleton proof declarations that need to be optimized.
 
 \begin{lstlisting}[caption=Optimizing \texttt{proofS}]
 {-# ANN proofS OptimizeSingleton #-}
