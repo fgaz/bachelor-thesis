@@ -33,6 +33,8 @@ GADTs (Generalized Algebraic Data Types) are a powerful generalization of Haskel
 An explicit signature can be strictly more expressive than the standard syntax, since it can, for example, restrict the type variables of the return type to a specific instantiation depending on the constructor.
 Similarly, given a type variable instantiation, we can know the type constructor that was used, or at least restrict the subset of possible ones.
 
+In general, GADTs can be used to encode properties of the data in its type and enforce invariants in functions.
+
 To briefly remind the reader of the usefulness of GADTs, an example follows:
 
 \begin{lstlisting}[caption=A GADT describing a simple language with ints and pairs]
