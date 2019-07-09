@@ -29,7 +29,11 @@ The optimizer is made available as a Cabal package in a repository located at \u
 
 To be able to properly describe the problem, we first need to recall how GADTs work and why they are used.
 
-GADTs (Generalized Algebraic Data Types) are a powerful generalization of Haskell's standard ADTs (Algebraic Data Types) that allow the programmer to explicitly specify the type signatures of data constructors\cite{simple-unification-based-type-inference-for-gadts}. To briefly remind the reader of the usefulness of GADTs, an example follows:
+GADTs (Generalized Algebraic Data Types) are a powerful generalization of Haskell's standard ADTs (Algebraic Data Types) that allow the programmer to explicitly specify the type signatures of data constructors\cite{simple-unification-based-type-inference-for-gadts}.
+An explicit signature can be strictly more expressive than the standard syntax, since it can, for example, restrict the type variables of the return type to a specific instantiation depending on the constructor.
+Similarly, given a type variable instantiation, we can know the type constructor that was used, or at least restrict the subset of possible ones.
+
+To briefly remind the reader of the usefulness of GADTs, an example follows:
 
 \begin{lstlisting}[caption=A GADT describing a simple language with ints and pairs]
 data Expr a
@@ -111,16 +115,25 @@ In the next section we introduce one of them.
 
 The problem arises when we try to write more complex functions that the ones in section~\ref{sec:context}.
 
-For example, here is an implementation of the classic $O(n)$ reverse, but on the length-indexed vectors:
+For example, we present an implementation of the classic $O(n)$ reverse, but on the length-indexed vectors.
+We first define an helper function that takes two \texttt{Vec}s, and uses them as stacks by recursively popping elements from the first one while pushing them on the second, in reverse order:
 
 \begin{lstlisting}
 reverse' :: Vec a n -> Vec a m -> Vec a (n :+: m)
 reverse' Nil         acc = acc
 reverse' (Cons x xs) acc = reverse' xs (Cons x acc)
+\end{lstlisting}
 
+From the type, the length of the returned \texttt{Vec} will be equal to the sum of the lengths of the inputs (as we merge the two).
+
+Then we write a wrapper, which simply passes the \texttt{Vec} to reverse to \texttt{reverse'} in addition to an empty \texttt{Vec}, where the elements will be pushed.
+
+\begin{lstlisting}
 reverse :: Vec a n -> Vec a n
 reverse v = reverse' v Nil
 \end{lstlisting}
+
+Since the type of \texttt{Nil} is \texttt{Vec a 'Z}, the types of the two functions encode the invariant that the sum of the elements of the two \texttt{Vec}s is always equal to the number of elements of the original \texttt{Vec}.
 
 Again, the code looks much the same as the non-indexed variant, except that now the type gives us the guarantee that the vector's length will remain exactly the same.
 But this time, the above code will not compile, and will generate an error similar to:
@@ -146,8 +159,8 @@ in \texttt{reverse'}.
 
 The complexity added by GADTs is enough that GHC cannot prove on its own that \texttt{reverse} and \texttt{reverse'} could safely be given the types specified in the signatures.
 In the \texttt{reverse} error, GHC is telling us that it is not able to autonomously produce a proof that $n \sim n+0$ (the right addition identity).
-In the \texttt{reverse'} error, the same happens for $n+(m+1) \sim (n+m)+1$ (a subset of the associative property).
-Tipically, GHC can only prove type equalities by starting from the definitional equality (the equalities derived directly from the type definition), and this is why it is able to prove, for example, $0+n \sim n$ but not $n+0 \sim n$. The former is present in \texttt{:+:}'s definition (\texttt{'Z :+: m = m}), the latter is not.
+In the \texttt{reverse'} error, the same happens for $n+(m+1) \sim (n+m)+1$ (a special case of the associative property).
+Typically, GHC can only prove type equalities by starting from the definitional equality (the equalities derived directly from the type definition), and this is why it is able to prove, for example, $0+n \sim n$ but not $n+0 \sim n$. The former is present in \texttt{:+:}'s definition (\texttt{'Z :+: m = m}), the latter is not.
 
 Those additional proofs need to be supplied by the programmer in the form of a propositional equality declaration, that is, by explicitly writing an expression with return type \texttt{a $:\sim:$ b}, where \texttt{a} and \texttt{b} are the types to be proven equal.
 
@@ -186,8 +199,10 @@ Both of our proofs work by shrinking the problem until a base case of definition
 The returned \texttt{Refl} is built not by composing other \texttt{Refl}s from the recursive calls, but by using their type information to deduce that the expression is well typed.
 To get this information, the result of the recursive call has to be evaluated by the \texttt{case} statement, so both proofs have $O(n)$ complexity.
 
-For example, in \texttt{proofIdentityZ}, the base case directly uses the definitional equality, while \texttt{proofS} proves $(n+1) + 0 \sim n+1$ (we match on \texttt{SS n}, hence the $+1$) by recursively calling itself and obtaining $n+0 \sim n$.
-The first proposition can be deduced from the second directly by definitional equality:
+For example, in \texttt{proofIdentityZ}, the base case directly uses the definitional equality, while the recursive case proves $(n+1) + 0 \sim n+1$ (we match on \texttt{SS n}, hence the $+1$) by recursively calling itself and obtaining $n+0 \sim n$.
+The first proposition can be deduced from the second directly by definitional equality.
+
+Starting from
 
 $$
 n+0 \sim n
@@ -202,7 +217,7 @@ $$
 From the definitional equality derived from \texttt{:+:}, \texttt{'S n :+: m = 'S (n :+: m)}, we have that
 
 $$
-(n+0)+1 \sim (n+1)+0
+(n+1)+0 \sim (n+0)+1
 $$
 
 hence
@@ -212,6 +227,10 @@ $$
 $$
 
 \fbox{\phantom{\rule{.7ex}{.7ex}}} \\ % no need to depend on amsthm jsut for this
+
+GHC is able to automatically perform the above steps once it is provided with the base case and recursive call defined in \texttt{proofIdentityZ}.
+
+A similar inductive reasoning is done for \texttt{proofS}.
 
 This brings us to the final version of \texttt{reverse}, which provides the compiler with the proofs as evidence that the types shown in the previous error are, indeed, equivalent:
 
@@ -238,7 +257,7 @@ While \texttt{proofIdentityZ} is just a single $O(n)$ operation, we can see that
 In this example, the complexity raises by a factor of $n$, but this overhead (the computation of \texttt{Refl}) is not actually needed to produce the result, it just carries the type information needed to verify the correctness of the algorithm.
 Moreover, the \texttt{n :+: 'Z $:\sim:$ n} type has exactly one non-$\bot$ inhabitant, \texttt{Refl}, and this is the case for every valid equality proposition. Such types are commonly called \emph{singletons}, as mentioned in the itroduction.
 
-The compiler though cannot optimize the proof away and substitute it with a type-coerced \texttt{Refl} because, while the representation of an eventual result would be identical, a Haskell program is not guaranteed to terminate. Nontermination can be used to construct unsound proofs, so executing the proof at runtime is necessary to maintain soundness.
+The compiler though cannot optimize the proof away and substitute it with a type-coerced \texttt{Refl} because, while the representation of an eventual result would be identical, a Haskell program is not guaranteed to terminate. Nontermination can be used to construct unsound proofs, so executing the proof at runtime is necessary to maintain soundness and type safety.
 This is because, even if an unsound proof is constucted through nontermination, the actual result of the proof will never be produced.
 
 For example, the following "proof" will compile, but if it terminated it would obviously be unsound:
@@ -250,7 +269,12 @@ unsound = unsound
 
 The proposition defined by \texttt{unsound}'s type states that \texttt{Char} is equivalent to \texttt{Bool}. This is clearly false, but due to the infinite recursion the program will typecheck. On execution, though, the incorrect proposition will never be returned, and the program will hang indefinitely while trying to prove the false.
 
-If such an expression was optimized to a constant operation, the above would not be valid anymore, and \texttt{unsound} would break the safety of the type system.
+If such an expression was optimized to a constant operation, the above would not be valid anymore, and \texttt{unsound} would break the safety of the type system, for example by allowing this function to return:
+
+\begin{lstlisting}
+unsafeCharToBool :: Char -> Bool
+unsafeCharToBool = castWith unsound
+\end{lstlisting}
 
 In general, every singleton proof in Haskell suffers from this issue, which is conversely absent in total languages such as Coq.
 Total languages only compile when the program is guaranteed to produce a result in a finite amount of time for every possible input.
@@ -258,13 +282,48 @@ Total languages only compile when the program is guaranteed to produce a result 
 \chapter{Solution}
 \label{cha:solution}
 
-Since singleton indexed types only have one inhabitant for each type variable assignment (we exclude $\bot$ for now), it is possible to construct that term by inspecting the datatype's constructors and picking the only possible one.
-The resulting term, with appropriate type coercions, can be substituted to the (already type-checked) proof, and, being the reduced form of the proof, it will have $O(1)$ complexity.
+Since singleton indexed types only have one inhabitant for each type variable assignment (we exclude $\bot$ for now), intuitively it is possible to directly construct the normal form of that inhabitant, and to substitute it (with appropriate type coercions) to the already type-checked proof, reducing its complexity to the bare minimum.
+
+In the particular but extremely common case where the singleton type only has one data constructor and each of its arguments also respects this property\footnote{\texttt{:$\sim$:} is such a type, having only the \texttt{Refl} data constructor.}, the inhabitant will always be the same, namely the one built with that only data constructor (recursively for its arguments), regardless of the type argument instantiation.
+Therefore, the construction of tis type of term can be done entirely at compile time, yelding a $O(1)$ runtime complexity.
+
+In practice, a typechecked binding of the form:
+
+\begin{lstlisting}
+x :: S
+x = someExpensiveOperation
+\end{lstlisting}
+
+where \texttt{S} is a singleton with an inhabitant named \texttt{SInhabinant}, could in principle be optimized to:
+
+\begin{lstlisting}
+x :: S
+x = unsafeCoerce SInhabitant
+\end{lstlisting}
 
 In the case of a function, we can build one with the same arity that ignores its arguments and returns a term constructed in the same way.
 Since we have to ensure that the return type is actually inhabited, and by the Curry-Howard isomorphism\footnote{The Curry-Howard isomorphism associates types with logic propositions and terms that inhabit those types to proofs.} the function type corresponds to logic implication, this can be done only at the condition that all the argument types are inhabited (the result of an implication is definitely true if its argument is).
 
-We solve the $\bot$ problem by whitelisting a few useful identifiers from external libraries and by using totality checking.
+For example, the \texttt{proofIdentityZ} proof defined in listing~\ref{lst:proof-z} could be optimized to:
+
+\begin{lstlisting}
+proofIdentityZ :: SN n -> n :+: 'Z :~: n
+proofIdentityZ _ = unsafeCoerce Refl
+\end{lstlisting}
+
+reducing its complexity from $O(n)$ to a constant.
+\texttt{SN} is inhabited, so the optimization is possible.
+
+As a counterexample, the following function cannot be optimized without breaking type safety, because \texttt{'Z :$\sim$: 'S 'Z} is not inhabited:
+
+\begin{lstlisting}
+f :: 'Z :~: 'S 'Z -> 'Z :~: 'S 'Z
+f = id
+\end{lstlisting}
+
+If we did optimize it, then it would be possible to obtain a \texttt{'Z :$\sim$: 'S 'Z} by simply passing \texttt{undefined} to \texttt{f}. The optimized function would ignore it and return a \texttt{'Z :$\sim$: 'S 'Z} without erroring.
+
+We solve the problem that would arise with the presence of $\bot$ in the proof's body by whitelisting a few useful identifiers from external libraries and by using totality checking.
 Totality checking is a form of program analysis that tries to prove termination or nontermination.
 Due to the undecidability of the halting problem, there are some cases where determining this is not possible in a finite amount of time.
 This means that our optimization will not trigger in all possible cases, but the cases where it will are enough to be useful for our purposes.
@@ -274,7 +333,7 @@ We only need a partial totality check, localized on the binding to optimize.
 \section{Implementation}
 \label{sec:implementation}
 
-We implemented the optimization as a GHC Core plugin that we named \texttt{singleton-optimizer}.
+We implemented the optimization as a GHC Core plugin\cite{ghc-docs-extending}\cite{ghc-wiki}\cite{ghc-library-docs} that we named \texttt{singleton-optimizer}.
 
 The plugin analyzes each top-level binding that is annotated with the \texttt{OptimizeSingleton} annotation and verifies that all the following conditions are met:
 
@@ -311,11 +370,11 @@ data SN :: N -> * where
     SS :: SN n -> SN ('S n)
 \end{lstlisting}
 
-Totality checking is implemented by leveraging the Liquid Haskell\cite{refinement-types-for-haskell} totality checker\footnote{Only in structural mode at the time of writing. Enabling the metric-based checker is planned.}.
+Totality checking is implemented by leveraging the LiquidHaskell\cite{refinement-types-for-haskell}\cite{liquidhaskell-website} totality checker\footnote{Only in structural mode at the time of writing. Enabling the metric-based checker is planned.}.
 It was chosen mainly because, being an active project written in Haskell itself and made available as both an executable and a library that acts on GHC Core, it makes integrating it with the GHC plugin system fairly straightforward.
 
-Liquid Haskell only checks definitions and not uses\footnote{And it would not be possible to check all use sites anyway, since dependant modules are not known beforehand.}, and Haskell allows codata (in which infinite structures are possible) and does not distinguish it from data (in which they are not), so in principle all functions can fail to terminate even if they are structurally recursive. For example \texttt{length :: [a] -> Int} is structurally recursive, but can hang if it is passed an infinite list.
-This limits us to optimizing only non-function types though, which is extremely limiting, but, as explained in the previous section, we can lift this restriction if all the arguments are inhabited (by a non-$\bot$ term).
+LiquidHaskell only checks definitions and not uses\footnote{And it would not be possible to check all use sites anyway, since dependant modules are not known beforehand.}, and Haskell allows codata (in which infinite structures are possible), so in principle all functions can fail to terminate even if they are structurally recursive. For example \texttt{length :: [a] -> Int} is structurally recursive, but can hang if it is passed an infinite list.
+This would limit us to optimizing only non-function types though, which is extremely limiting, but, as explained in the previous section, we can lift this restriction if all the arguments are inhabited (by a non-$\bot$ term).
 This may come at the cost of increased laziness (see section~\ref{subsec:limitations-laziness}).
 
 Programmatically checking a type for inhabitants is a difficult task in itself, so in our work we simply provide a list of manually checked types.
@@ -363,28 +422,57 @@ We also describe the limitations to be aware of when employing the plugin.
 
 A number of tests with increasing complexity was written and categorized depending on the expected and actual triggering of the optimization.
 There are some cases where the plugin could optimize a singleton and it does not, but this does not undermine the soundness of the programs.
-More importantly, there is only one case where the plugin unsoundly optimizes where it shouldn't, described in section \ref{subsec:limitations-lh}, and it's due to a bug in Liquid Haskell.
+More importantly, there is only one known case where the plugin unsoundly optimizes where it shouldn't, described in section \ref{subsec:limitations-lh}, and it's due to a bug in LiquidHaskell.
 
-The core output of the plugin when ran on the tests was successfully sanity-checked with the \texttt{-dcore-lint} GHC option.
+The Core\footnote{Core is an intermediate representation of Haskell code based on System FC. See \url{https://gitlab.haskell.org/ghc/ghc/wikis/commentary/compiler/core-syn-type} for more information.} output of the plugin when ran on the tests was successfully sanity-checked with the \texttt{-dcore-lint} GHC option.
 Furthermore, its external representation\cite{core-external-representation} was manually verified for adherence to the expected output.
 
-For example, this is one of the simplest tests:
+For example, this is one of the simplest tests, a structurally terminating function that returns \texttt{()}:
 
 \begin{lstlisting}
-TODO, I don't have the toolchain needed to print the core on this machine
+{-# NOINLINE structurallyTerminating #-}
+structurallyTerminating :: N -> ()
+structurallyTerminating Z = ()
+structurallyTerminating (S n) = structurallyTerminating n
 \end{lstlisting}
 
-Normally, this is the Core it would produce:
+Note that we added a \texttt{NOINLINE} pragma to keep the binding at the top level.
+Otherwise, the aggressive GHC inliner would have inlined it and we wouldn't be able to see the result of the optimization as easily.
+This is not necessary outside of test code.
 
-\begin{lstlisting}
-TODO, I don't have the toolchain needed to print the core on this machine
+Normally, this is the Core that would be produced:
+
+\begin{lstlisting}[language=]
+Rec {
+-- RHS size: {terms: 8, types: 3, coercions: 0, joins: 0/0}
+structurallyTerminating [InlPrag=NOINLINE, Occ=LoopBreaker]
+  :: N -> ()
+[GblId, Arity=1, Caf=NoCafRefs, Unf=OtherCon []]
+structurallyTerminating
+  = \ (ds_dpXI :: N) ->
+      case ds_dpXI of {
+        Z -> GHC.Tuple.();
+        S n_aozT -> structurallyTerminating n_aozT
+      }
+end Rec }
 \end{lstlisting}
 
-When we enable the optimization, instead, the body of the function is replaced by a correctly coerced \texttt{Refl}:
+The avove example almost mirrors the source.
+It calls itself recursively until the \texttt{Z} base case.
 
-\begin{lstlisting}
-TODO, I don't have the toolchain needed to print the core on this machine
+When we enable the optimization by adding \texttt{\{-\# ANN structurallyTerminating OptimizeSingleton \#-\}}, instead, the body of the function is simply replaced by a function that ignores its argument and returns \texttt{()}:
+
+\begin{lstlisting}[language=]
+-- RHS size: {terms: 2, types: 1, coercions: 0, joins: 0/0}
+structurallyTerminating [InlPrag=NOINLINE] :: N -> ()
+[GblId, Arity=1, Caf=NoCafRefs, Unf=OtherCon []]
+structurallyTerminating = \ _ [Occ=Dead] -> GHC.Tuple.()
 \end{lstlisting}
+
+The plugin recognized that \texttt{()} has only one inhabitant, that the function is total, and that the argument is inhabited, and was able to perform the optimization.
+
+In this example, the singleton has no type parameters, so there's no need to add coercions.
+When optimizing more complex singletons, for example \texttt{:$\sim$:}, we would see a coercion to the appropriate instantiation of type parameters.
 
 \section{Benchmarks}
 \label{sec:benchmarks}
@@ -393,7 +481,7 @@ We now proceed to analyze the effects of the application of the optimization on 
 
 We ran a benchmark in which \texttt{Vec}s of progressively larger sizes were reversed using the \texttt{reverse} function defined in listing~\ref{lst:reversal-final}.
 We then ran the same benchmark after adding the \texttt{OptimizeSingleton} annotation to the \texttt{proofIdentityZ} and \texttt{proofS} proofs, bringing their computational complexities down to a constant.
-Gone the overhead of the proofs, the complexity of the optimized \texttt{reverse} should be $O(n)$.
+Gone the overhead of the proofs, we expect the complexity of the optimized \texttt{reverse} to be $O(n)$.
 
 This is confirmed by the results of the benchmark, shown in figure~\ref{fig:bench-reverse}.
 
@@ -460,7 +548,7 @@ This is confirmed by the results of the benchmark, shown in figure~\ref{fig:benc
   \label{fig:bench-reverse}
 \end{figure}
 
-In the measured range the optimized version is three orders of magnitude faster that the unoptimized one, but most importantly it we can confirm the predicted complexities by fitting the data with the respective polynomials (quadratic and linear) and obtaining a low error.
+In the measured range the optimized version is three orders of magnitude faster that the unoptimized one, but most importantly we can confirm the predicted complexities by fitting the data with the respective polynomials (quadratic and linear) and obtaining a low error.
 
 This benchmark can be repeated by running the \texttt{reverse} benchmark included in the plugin's package with the command \texttt{cabal bench}.
 
@@ -482,17 +570,16 @@ As explained in Section~\ref{cha:solution}, this does not cause problems with th
 For example, passing \texttt{undefined} as an argument will not make the optimized program crash when the unoptimized one would have.
 We do not consider this as a significant problem, since the programmer is only interested in the proof, which is guaranteed to hold anyway.
 
-\subsection{Limitations derived from Liquid Haskell}
+\subsection{Limitations derived from LiquidHaskell}
 \label{subsec:limitations-lh}
 
-In some cases, Liquid Haskell's totality checker can report a function as total when it actually is not.
+In some rare cases, LiquidHaskell's totality checker can report a function as total when it actually is not.
 
-Such known cases are, at the time of writing:
+At the time of writing, there is only one known instance of this problem: datatype-encoded recursion.
 
-\begin{description}
-  \item[Datatype-encoded recursion]
-    For example, the following code is detected as total and the \texttt{callsRecWithData} obviously incorrect equality is optimized:
-    \begin{lstlisting}
+For example, the following code is detected as total and the \texttt{callsRecWithData} obviously incorrect equality is optimized:
+
+\begin{lstlisting}
 newtype Rec a = MkRec (Rec a -> a)
 
 recWithData :: Rec a -> a
@@ -501,21 +588,20 @@ recWithData r@(MkRec f) = f r
 {-# ANN callsRecWithData OptimizeSingleton #-}
 callsRecWithData :: (Int :~: Bool)
 callsRecWithData = recWithData (MkRec recWithData)
-    \end{lstlisting}
+\end{lstlisting}
 
-   This error is a known bug in Liquid Haskell\footnote{\url{https://github.com/ucsd-progsys/liquidhaskell/issues/159}}.
-\end{description}
+This is a well known trick to achieve nontermination without using recursion in terms but using negative recursion in types.
+
+This error is a known bug in LiquidHaskell\footnote{\url{https://github.com/ucsd-progsys/liquidhaskell/issues/159}}.
 
 \chapter{Conclusions}
 \label{cha:conclusions}
 
 We showed how singleton proofs can be reduced to a constant when they are proved total and explained why this optimization isn't already done by GHC.
-We developed the \texttt{singleton-optimizer} package, which can detect those cases though the use of state-of-the-art tools, and can optimize them while maintaining soundness.
+We developed the \texttt{singleton-optimizer} package, which can detect those cases trhough the use of state-of-the-art tools, and can optimize them while maintaining type soundness.
 Finally, we showed that the plugin has a practical and measurable effect.
 
 We believe that the advanced type system features combined with similarly advanced analysis techniques can not only greatly enhance the expressivity of a language, but often can do so at no additional computational cost or can even provide the means for further optimizations.
 
 Furthermore, as shown in this work, they can be applied to a restricted part of the program to great effect, without overly restricting the rest of it (in this optimization the totality check was local only).
-
-%MAYBE We believe more languages will shift towards this paradigm of
 
