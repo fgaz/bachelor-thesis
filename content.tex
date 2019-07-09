@@ -10,7 +10,7 @@ Such proofs can end up increasing the computational complexity of the program: i
 An extended example is shown in section~\ref{sec:problem}.
 Since the proof can only return one value, the unique inhabitant of the singleton, one would expect that, after having typechecked it to verify the soundness of the proof, the compiler optimized it to a constant operation.
 This is not the case though, due to the presence of another inhabitant: $\bot$ (bottom).
-In haskell, $\bot$ can inhabit any type, and can come from many sources, for example \texttt{undefined}, \texttt{error}, and most often nontermination.
+In Haskell, $\bot$ can inhabit any type, and can come from many sources, for example \texttt{undefined}, \texttt{error}, and most often nontermination.
 
 As explained in chapter~\ref{cha:solution}, we solve this problem by employing a totality checker coupled with a whitelist of inhabited types.
 We developed an optimizer that can optimize provably total singleton proofs to a constant operation in a sound way.
@@ -255,10 +255,10 @@ In this case though we have to take into account the calls to \texttt{proofS}, \
 While \texttt{proofIdentityZ} is just a single $O(n)$ operation, we can see that \texttt{proofS} and \texttt{length}, each one $O(n)$, get called at every \texttt{reverse'} iteration ($n$ in total), for a total complexity of $O(n^2)$.
 
 In this example, the complexity raises by a factor of $n$, but this overhead (the computation of \texttt{Refl}) is not actually needed to produce the result, it just carries the type information needed to verify the correctness of the algorithm.
-Moreover, the \texttt{n :+: 'Z $:\sim:$ n} type has exactly one non-$\bot$ inhabitant, \texttt{Refl}, and this is the case for every valid equality proposition. Such types are commonly called \emph{singletons}, as mentioned in the itroduction.
+Moreover, the \texttt{n :+: 'Z $:\sim:$ n} type has exactly one non-$\bot$ inhabitant, \texttt{Refl}, and this is the case for every valid equality proposition. Such types are commonly called \emph{singletons}, as mentioned in the introduction.
 
 The compiler though cannot optimize the proof away and substitute it with a type-coerced \texttt{Refl} because, while the representation of an eventual result would be identical, a Haskell program is not guaranteed to terminate. Nontermination can be used to construct unsound proofs, so executing the proof at runtime is necessary to maintain soundness and type safety.
-This is because, even if an unsound proof is constucted through nontermination, the actual result of the proof will never be produced.
+This is because, even if an unsound proof is constructed through nontermination, the actual result of the proof will never be produced.
 
 For example, the following "proof" will compile, but if it terminated it would obviously be unsound:
 
@@ -285,7 +285,7 @@ Total languages only compile when the program is guaranteed to produce a result 
 Since singleton indexed types only have one inhabitant for each type variable assignment (we exclude $\bot$ for now), intuitively it is possible to directly construct the normal form of that inhabitant, and to substitute it (with appropriate type coercions) to the already type-checked proof, reducing its complexity to the bare minimum.
 
 In the particular but extremely common case where the singleton type only has one data constructor and each of its arguments also respects this property\footnote{\texttt{:$\sim$:} is such a type, having only the \texttt{Refl} data constructor.}, the inhabitant will always be the same, namely the one built with that only data constructor (recursively for its arguments), regardless of the type argument instantiation.
-Therefore, the construction of tis type of term can be done entirely at compile time, yelding a $O(1)$ runtime complexity.
+Therefore, the construction of this type of term can be done entirely at compile time, yielding a $O(1)$ runtime complexity.
 
 In practice, a typechecked binding of the form:
 
@@ -414,7 +414,7 @@ Obviously this annotation is not to be used lightly, as it can break the soundne
 \chapter{Results}
 \label{cha:results}
 
-We now show that the optimization produces a real and measurable decrease in complexity, by means of tests and bennchmarks.
+We now show that the optimization produces a real and measurable decrease in complexity, by means of tests and benchmarks.
 We also describe the limitations to be aware of when employing the plugin.
 
 \section{Tests and Core output}
@@ -457,7 +457,7 @@ structurallyTerminating
 end Rec }
 \end{lstlisting}
 
-The avove example almost mirrors the source.
+The above example almost mirrors the source.
 It calls itself recursively until the \texttt{Z} base case.
 
 When we enable the optimization by adding \texttt{\{-\# ANN structurallyTerminating OptimizeSingleton \#-\}}, instead, the body of the function is simply replaced by a function that ignores its argument and returns \texttt{()}:
@@ -598,7 +598,7 @@ This error is a known bug in LiquidHaskell\footnote{\url{https://github.com/ucsd
 \label{cha:conclusions}
 
 We showed how singleton proofs can be reduced to a constant when they are proved total and explained why this optimization isn't already done by GHC.
-We developed the \texttt{singleton-optimizer} package, which can detect those cases trhough the use of state-of-the-art tools, and can optimize them while maintaining type soundness.
+We developed the \texttt{singleton-optimizer} package, which can detect those cases through the use of state-of-the-art tools, and can optimize them while maintaining type soundness.
 Finally, we showed that the plugin has a practical and measurable effect.
 
 We believe that the advanced type system features combined with similarly advanced analysis techniques can not only greatly enhance the expressivity of a language, but often can do so at no additional computational cost or can even provide the means for further optimizations.
