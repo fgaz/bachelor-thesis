@@ -1,0 +1,61 @@
+\chapter{Complete lisiting of the motivating example}
+\label{cha:example}
+
+In this attachment we provide the complete listing of the motivating example.
+It can be compiled by saving it as \texttt{SingletonOptimizerExample.hs}, installing the plugin (\texttt{cabal install singleton-optimizer}) and running the command \texttt{ghc -fplugin=GHC.Plugin.SingletonOptimizer <SingletonOptimizerExample.hs>}
+
+\begin{lstlisting}[caption=Optimizing a length-indexed vector reversal with the \texttt{singleton-optimizer} GHC plugin.]
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeFamilies #-}
+
+module SingletonOptimizerExample
+( Vec(..)
+, reverse
+) where
+
+import GHC.Plugin.SingletonOptimizer ( OptimizeSingleton(OptimizeSingleton) )
+-- SN is a whitelisted argument type provided by singleton-optimizer
+-- N's constructors are also whitelisted for use in expressions
+import GHC.Plugin.SingletonOptimizer.Whitelist.Types (N(..), SN(..))
+import Data.Type.Equality ((:~:)(Refl))
+
+-- We will shadow some names from Prelude
+import Prelude hiding (length, reverse)
+
+
+type family (n :: N) :+: (m :: N) :: N where
+    'Z   :+: m = m
+    'S n :+: m = 'S (n :+: m)
+
+{-# ANN proofIdentityZ OptimizeSingleton #-}
+proofIdentityZ :: SN n -> n :+: 'Z :~: n
+proofIdentityZ SZ = Refl
+proofIdentityZ (SS n) = case proofIdentityZ n of Refl -> Refl
+
+{-# ANN proofS OptimizeSingleton #-}
+proofS :: SN n -> SN m -> n :+: 'S m :~: 'S (n :+: m)
+proofS SZ     _ = Refl
+proofS (SS n) m = case proofS n m of Refl -> Refl
+
+data Vec :: * -> N -> * where
+    Nil  :: Vec a 'Z
+    Cons :: a -> Vec a n -> Vec a ('S n)
+
+length :: Vec a n -> SN n
+length Nil         = SZ
+length (Cons _ xs) = SS (length xs)
+
+reverse' :: Vec a n -> Vec a m -> Vec a (n :+: m)
+reverse' Nil         acc = acc
+reverse' (Cons x xs) acc =
+    case proofS (length xs) (length acc) of
+      Refl -> reverse' xs (Cons x acc)
+
+reverse :: Vec a n -> Vec a n
+reverse v =
+    case proofIdentityZ (length v) of
+      Refl -> reverse' v Nil
+\end{lstlisting}
+
